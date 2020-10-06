@@ -173,30 +173,6 @@ class SigningSupport {
 		return paramsBuilder.toString();
 	}
 
-	private String calculateSignature(String baseString, String consumerSecret, String tokenSecret) {
-		String key = oauthEncode(consumerSecret) + "&" + (tokenSecret != null ? oauthEncode(tokenSecret) : "");
-		return sign(baseString, key);
-	}
-
-	private String sign(String signatureBaseString, String key) {
-		try {
-			Mac mac = Mac.getInstance(HMAC_SHA1_MAC_NAME);
-			SecretKeySpec spec = new SecretKeySpec(key.getBytes(), HMAC_SHA1_MAC_NAME);
-			mac.init(spec);
-			byte[] text = signatureBaseString.getBytes(UTF8_CHARSET_NAME);
-			byte[] signatureBytes = mac.doFinal(text);
-			signatureBytes = Base64.getEncoder().encode(signatureBytes);
-			String signature = new String(signatureBytes, UTF8_CHARSET_NAME);
-			return signature;
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException(e);
-		} catch (InvalidKeyException e) {
-			throw new IllegalStateException(e);
-		} catch (UnsupportedEncodingException shouldntHappen) {
-			throw new IllegalStateException(shouldntHappen);
-		} 
-	}
-
 	private MultiValueMap<String, String> readFormParameters(MediaType bodyType, byte[] bodyBytes) {
 		if (bodyType != null && bodyType.equals(MediaType.APPLICATION_FORM_URLENCODED)) {
 			String body;
