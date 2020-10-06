@@ -1,11 +1,11 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      https://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,7 +23,6 @@ import java.net.URLDecoder;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,15 +39,26 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.codec.Base64;
 import org.springframework.util.Assert;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 
 class SigningSupport {
-	
+
 	private TimestampGenerator timestampGenerator = new DefaultTimestampGenerator();
-	
+
+	private RequestSigner requestSigner;
+
+	public SigningSupport() {
+	    this(new HMACRequestSigner());
+	}
+
+	public SigningSupport(RequestSigner requestSigner) {
+	    this.requestSigner = requestSigner == null ? new HMACRequestSigner() : requestSigner;
+	}
+
 	/**
 	 * Builds the authorization header.
 	 * The elements in additionalParameters are expected to not be encoded.
@@ -63,7 +73,7 @@ class SigningSupport {
 		collectedParameters.setAll(oauthParameters);
 		collectedParameters.putAll(additionalParameters);		
 		String baseString = buildBaseString(method, getBaseStringUri(targetUrl), collectedParameters);
-		String signature = calculateSignature(baseString, consumerSecret, tokenSecret);
+		String signature = requestSigner.calculateSignature(baseString, consumerSecret, tokenSecret);
 		header.append(oauthEncode("oauth_signature")).append("=\"").append(oauthEncode(signature)).append("\"");
 		return header.toString();
 	}
@@ -82,7 +92,7 @@ class SigningSupport {
 	Map<String, String> commonOAuthParameters(String consumerKey) {
 		Map<String, String> oauthParameters = new HashMap<String, String>();
 		oauthParameters.put("oauth_consumer_key", consumerKey);
-		oauthParameters.put("oauth_signature_method", HMAC_SHA1_SIGNATURE_NAME);
+		oauthParameters.put("oauth_signature_method", requestSigner.getSignatureMethod());
 		long timestamp = timestampGenerator.generateTimestamp();
 		oauthParameters.put("oauth_timestamp", Long.toString(timestamp));
 		oauthParameters.put("oauth_nonce", Long.toString(timestampGenerator.generateNonce(timestamp)));
@@ -223,7 +233,7 @@ class SigningSupport {
 
 	private String getBaseStringUri(URI uri) {
 		try {
-			// see: https://tools.ietf.org/html/rfc5849#section-3.4.1.2
+			// see: http://tools.ietf.org/html/rfc5849#section-3.4.1.2
 			return new URI(uri.getScheme(), null, uri.getHost(), getPort(uri), uri.getPath(), null, null).toString();
 		} catch (URISyntaxException e) {
 			throw new IllegalArgumentException(e);
@@ -277,7 +287,7 @@ class SigningSupport {
 		UNRESERVED = unreserved;		
 	}
 	
-	private static String oauthEncode(String param) {
+	public static String oauthEncode(String param) {
 		try {
 			// See https://tools.ietf.org/html/rfc5849#section-3.6
 			byte[] bytes = encode(param.getBytes(UTF8_CHARSET_NAME), UNRESERVED);
@@ -317,10 +327,6 @@ class SigningSupport {
 		}
 	}
 
-	private static final String HMAC_SHA1_SIGNATURE_NAME = "HMAC-SHA1";
-
-	private static final String HMAC_SHA1_MAC_NAME = "HmacSHA1";
-
-	private static final String UTF8_CHARSET_NAME = "UTF-8";
+	public static final String UTF8_CHARSET_NAME = "UTF-8";
 
 }

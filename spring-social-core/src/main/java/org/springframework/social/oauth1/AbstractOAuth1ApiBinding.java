@@ -51,7 +51,8 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 */
 	protected AbstractOAuth1ApiBinding() {
 		credentials = null;
-		restTemplate = createRestTemplateWithCulledMessageConverters();
+		restTemplate = new RestTemplate(ClientHttpRequestFactorySelector.getRequestFactory());
+		restTemplate.setMessageConverters(getMessageConverters());
 		configureRestTemplate(restTemplate);
 	}
 
@@ -68,7 +69,27 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 		Assert.notNull(accessToken, "Constructor argument 'accessToken' cannot be null.");
 		Assert.notNull(accessTokenSecret, "Constructor argument 'accessTokenSecret' cannot be null.");
 		credentials = new OAuth1Credentials(consumerKey, consumerSecret, accessToken, accessTokenSecret);
-		restTemplate = createRestTemplate(credentials);
+		restTemplate = ProtectedResourceClientFactory.create(credentials);
+		restTemplate.setMessageConverters(getMessageConverters());
+		configureRestTemplate(restTemplate);
+	}
+
+	/**
+	 * Constructs the API template with OAuth credentials necessary to perform operations on behalf of a user.
+	 * @param consumerKey the application's consumer key
+	 * @param consumerSecret the application's consumer secret
+	 * @param accessToken the access token
+	 * @param accessTokenSecret the access token secret
+	 * @param requestSigner signer for the request
+	 */
+	protected AbstractOAuth1ApiBinding(String consumerKey, String consumerSecret, String accessToken, String accessTokenSecret, RequestSigner requestSigner) {
+		Assert.notNull(consumerKey, "Constructor argument 'consumerKey' cannot be null.");
+		Assert.notNull(consumerSecret, "Constructor argument 'consumerSecret' cannot be null.");
+		Assert.notNull(accessToken, "Constructor argument 'accessToken' cannot be null.");
+		Assert.notNull(accessTokenSecret, "Constructor argument 'accessTokenSecret' cannot be null.");
+		credentials = new OAuth1Credentials(consumerKey, consumerSecret, accessToken, accessTokenSecret);
+		restTemplate = ProtectedResourceClientFactory.create(credentials, requestSigner);
+		restTemplate.setMessageConverters(getMessageConverters());
 		configureRestTemplate(restTemplate);
 	}
 	
@@ -95,7 +116,6 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 * During construction, subclasses may apply customizations to the RestTemplate needed to invoke a specific API.
 	 * @see RestTemplate#setMessageConverters(java.util.List)
 	 * @see RestTemplate#setErrorHandler(org.springframework.web.client.ResponseErrorHandler)
-	 * @return a reference to the REST client backing this API binding and used to perform API calls.
 	 */
 	public RestTemplate getRestTemplate() {
 		return restTemplate;
@@ -117,7 +137,6 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 * By default, this includes a {@link StringHttpMessageConverter}, a {@link MappingJackson2HttpMessageConverter}, a {@link ByteArrayHttpMessageConverter}, and a {@link FormHttpMessageConverter}.
 	 * The {@link FormHttpMessageConverter} is set to use "UTF-8" character encoding.
 	 * Override this method to add additional message converters or to replace the default list of message converters.
-	 * @return a list of {@link HttpMessageConverter}s to be used by the internal {@link RestTemplate}.
 	 */
 	protected List<HttpMessageConverter<?>> getMessageConverters() {
 		List<HttpMessageConverter<?>> messageConverters = new ArrayList<HttpMessageConverter<?>>();
@@ -133,7 +152,6 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 * By default, the message converter is set to use "UTF-8" character encoding.
 	 * Override to customize the message converter (for example, to set supported media types or message converters for the parts of a multipart message). 
 	 * To remove/replace this or any of the other message converters that are registered by default, override the getMessageConverters() method instead.
-	 * @return an {@link FormHttpMessageConverter} to be used by the internal {@link RestTemplate}.
 	 */
 	protected FormHttpMessageConverter getFormMessageConverter() {
 		FormHttpMessageConverter converter = new FormHttpMessageConverter();
@@ -152,7 +170,6 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 * Returns a {@link MappingJackson2HttpMessageConverter} to be used by the internal {@link RestTemplate}.
 	 * Override to customize the message converter (for example, to set a custom object mapper or supported media types).
 	 * To remove/replace this or any of the other message converters that are registered by default, override the getMessageConverters() method instead.
-	 * @return a {@link MappingJackson2HttpMessageConverter} to be used by the internal {@link RestTemplate}.
 	 */
 	protected MappingJackson2HttpMessageConverter getJsonMessageConverter() {
 		return new MappingJackson2HttpMessageConverter(); 
@@ -163,7 +180,7 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 * By default, the message converter supports "image/jpeg", "image/gif", and "image/png" media types.
 	 * Override to customize the message converter (for example, to set supported media types).
 	 * To remove/replace this or any of the other message converters that are registered by default, override the getMessageConverters() method instead.
-	 * @return a {@link ByteArrayHttpMessageConverter} to be used by the internal {@link RestTemplate} when consuming image or other binary resources.	 
+	 * @return a {@link ByteArrayHttpMessageConverter} to be used by the internal {@link RestTemplate} when consuming image or other binary resources.
 	 */
 	protected ByteArrayHttpMessageConverter getByteArrayMessageConverter() {
 		ByteArrayHttpMessageConverter converter = new ByteArrayHttpMessageConverter();
@@ -179,7 +196,7 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 		client.setInterceptors(interceptors);
 		return client;
 	}
-	
+
 	/**
 	 * After construction, include option to decorate the {@link RestTemplate} followed by an optional
 	 * configuration step. Many providers initialize sub-APIs, and this provides a convenient hook.
@@ -190,7 +207,7 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 		this.restTemplate = postProcess(this.restTemplate);
 		postConstructionConfiguration();
 	}
-	
+
 	/**
 	 * Extensible hook to decorate {@link RestTemplate} or wrap it with a proxy of any type. By default, it just passes it through with no changes.
 	 *
@@ -209,7 +226,7 @@ public abstract class AbstractOAuth1ApiBinding implements ApiBinding, Initializi
 	 */
 	protected void postConstructionConfiguration() {
 	}
-	
+
 	// Temporary: The RestTemplate that accepts a list of message converters wasn't added until Spring 3.2.7.
 	//            Remove this method and use that constructor exclusively when 3.1.x support is no longer necessary (Spring Social 2.0).
 	private RestTemplate createRestTemplateWithCulledMessageConverters() {
